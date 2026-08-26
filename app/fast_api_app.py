@@ -18,7 +18,6 @@ import google.auth
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
 
-from app.app_utils import services
 from app.app_utils.reasoning_engine_adapter import attach_reasoning_engine_routes
 from app.app_utils.telemetry import setup_pii_trace_redaction, setup_telemetry
 
@@ -33,9 +32,7 @@ AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app: FastAPI = get_fast_api_app(
     agents_dir=AGENT_DIR,
     web=True,
-    artifact_service_uri=services.ARTIFACT_SERVICE_URI,
     allow_origins=allow_origins,
-    session_service_uri=services.SESSION_SERVICE_URI,
     otel_to_cloud=True,
 )
 

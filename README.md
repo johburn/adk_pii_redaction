@@ -53,7 +53,6 @@ bio-agent/
 │   │   └── bigquery_analytics_plugin.py # Formateador con sanitización para BigQuery
 │   └── app_utils/              # Utilidades de infraestructura y observabilidad
 │       ├── reasoning_engine_adapter.py # Rutas HTTP del contrato Reasoning Engine para Gemini Enterprise
-│       ├── services.py         # Sesiones y artefactos compartidos en todo el proceso
 │       ├── span_processor.py   # Procesador OpenTelemetry con sanitización dirigida
 │       ├── telemetry.py        # Configuración de OpenTelemetry y Cloud Trace
 │       └── types_def.py        # Esquemas y tipos Pydantic
@@ -85,9 +84,9 @@ bio-agent/
   - `POST /apps/app/users/{user_id}/sessions`: Creación de sesiones.
   - `GET /health` & `/version`: Verificación del servicio.
 
-### 3. Adaptador de Reasoning Engine y Servicios ([`app/app_utils/reasoning_engine_adapter.py`](app/app_utils/reasoning_engine_adapter.py) & [`app/app_utils/services.py`](app/app_utils/services.py))
+### 3. Adaptador de Reasoning Engine ([`app/app_utils/reasoning_engine_adapter.py`](app/app_utils/reasoning_engine_adapter.py))
 - **Gemini Enterprise & Vertex AI**: Expone `/api/stream_reasoning_engine` y `/api/reasoning_engine` permitiendo la integración nativa con Gemini Enterprise mediante el contrato de Reasoning Engine (`:streamQuery`).
-- **Estado Unificado (`services.py`)**: Centraliza `shared://session` y `shared://artifact` compartiendo el mismo contexto entre Gemini Enterprise y las llamadas directas de ADK.
+- **Resolución Nativa de ADK**: Utiliza la gestión nativa de sesiones de `AdkApp` (`VertexAiSessionService` en producción y memoria local durante desarrollo).
 
 ---
 
