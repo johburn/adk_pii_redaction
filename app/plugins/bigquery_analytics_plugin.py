@@ -24,11 +24,12 @@ from google.adk.plugins.bigquery_agent_analytics_plugin import (
     BigQueryLoggerConfig,
 )
 from google.cloud import bigquery
-from app.plugins.pii_redaction_plugin import PiiRedactionPlugin
+from app.plugins.pii_redactor import PiiRedactor
 
 logger = logging.getLogger(__name__)
 
-_redactor = PiiRedactionPlugin(enabled=True)
+_redactor = PiiRedactor(enabled=True)
+
 
 
 def bq_pii_content_formatter(event_content: Any, event_type: str) -> str:

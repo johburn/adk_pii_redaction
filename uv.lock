@@ -189,6 +189,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "google-adk" },
     { name = "google-cloud-bigquery" },
+    { name = "google-cloud-dlp" },
     { name = "google-cloud-logging" },
     { name = "opentelemetry-exporter-gcp-monitoring" },
     { name = "opentelemetry-instrumentation-google-genai" },
@@ -219,6 +220,7 @@ requires-dist = [
     { name = "google-adk", specifier = ">=1.15.0,<2.0.0" },
     { name = "google-adk", marker = "extra == 'eval'", specifier = ">=1.15.0,<2.0.0" },
     { name = "google-cloud-bigquery", specifier = ">=3.20.0" },
+    { name = "google-cloud-dlp", specifier = ">=3.18.0,<4.0.0" },
     { name = "google-cloud-logging", specifier = ">=3.12.0,<4.0.0" },
     { name = "opentelemetry-exporter-gcp-monitoring", specifier = ">=1.6.0" },
     { name = "opentelemetry-instrumentation-google-genai", specifier = ">=0.1.0,<1.0.0" },
@@ -831,6 +833,22 @@ dependencies = [
 sdist = { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/ah-3p-staging-python/google-cloud-discoveryengine/google_cloud_discoveryengine-0.13.12.tar.gz", hash = "sha256:d6b9f8fadd8ad0d2f4438231c5eb7772a317e9f59cafbcbadc19b5d54c609419" }
 wheels = [
     { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/ah-3p-staging-python/google-cloud-discoveryengine/google_cloud_discoveryengine-0.13.12-py3-none-any.whl", hash = "sha256:295f8c6df3fb26b90fb82c2cd6fbcf4b477661addcb19a94eea16463a5c4e041" },
+]
+
+[[package]]
+name = "google-cloud-dlp"
+version = "3.38.0"
+source = { registry = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/ah-3p-staging-python/simple/" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "grpcio" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/ah-3p-staging-python/google-cloud-dlp/google_cloud_dlp-3.38.0.tar.gz", hash = "sha256:05c76584beb60b305c13dc51321a7d01e6e3ec31ddf105f18d50f2f834f7b684" }
+wheels = [
+    { url = "http://airlock-proxy.uplink.goog:999/python/artifact-foundry-prod/ah-3p-staging-python/google-cloud-dlp/google_cloud_dlp-3.38.0-py3-none-any.whl", hash = "sha256:16d43a425decfbbe47c100fcafdf0bbd013d9702969f1e6e1c63825ba2619b29" },
 ]
 
 [[package]]

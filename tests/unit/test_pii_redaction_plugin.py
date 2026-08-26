@@ -25,7 +25,8 @@ from app.plugins.pii_redaction_plugin import PiiRedactionPlugin
 
 @pytest.fixture
 def plugin():
-    return PiiRedactionPlugin(enabled=True)
+    return PiiRedactionPlugin(enabled=True, engine="regex")
+
 
 
 def test_redact_email(plugin):

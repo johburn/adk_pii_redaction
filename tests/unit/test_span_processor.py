@@ -47,7 +47,9 @@ class MockLlmRequestObj:
 
 def test_span_processor_attributes_redaction():
     wrapped = MagicMock()
-    processor = PiiRedactingSpanProcessor(wrapped_processor=wrapped, enabled=True)
+    processor = PiiRedactingSpanProcessor(
+        wrapped_processor=wrapped, enabled=True, engine="regex"
+    )
 
     span = MockSpan(
         attributes={
@@ -77,7 +79,9 @@ def test_span_processor_attributes_redaction():
 
 def test_span_processor_custom_object_redaction():
     wrapped = MagicMock()
-    processor = PiiRedactingSpanProcessor(wrapped_processor=wrapped, enabled=True)
+    processor = PiiRedactingSpanProcessor(
+        wrapped_processor=wrapped, enabled=True, engine="regex"
+    )
 
     obj = MockLlmRequestObj("Email user@domain.com, phone 555-987-6543")
     span = MockSpan(attributes={"gcp.vertex.agent.llm_request": obj})
@@ -92,7 +96,10 @@ def test_span_processor_custom_object_redaction():
 
 def test_span_processor_events_redaction():
     wrapped = MagicMock()
-    processor = PiiRedactingSpanProcessor(wrapped_processor=wrapped, enabled=True)
+    processor = PiiRedactingSpanProcessor(
+        wrapped_processor=wrapped, enabled=True, engine="regex"
+    )
+
 
     event = Event(
         name="llm_call_event",

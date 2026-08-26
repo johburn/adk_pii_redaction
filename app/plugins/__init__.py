@@ -19,9 +19,12 @@ from app.plugins.bigquery_analytics_plugin import (
     setup_bigquery_analytics_plugin,
 )
 from app.plugins.pii_redaction_plugin import PiiRedactionPlugin
+from app.plugins.pii_redactor import PiiRedactor
 
 __all__ = [
+    "PiiRedactor",
     "PiiRedactionPlugin",
     "InitBigQueryAnalyticsPlugin",
     "setup_bigquery_analytics_plugin",
 ]
+
