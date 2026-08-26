@@ -1,6 +1,6 @@
 # bio-agent 🤖
 
-Agente de investigación y generación de biografías factuales construido con **Google ADK 2.0 (Agent Development Kit)** y preparado para **Google Cloud Run**.
+Agente de investigación y generación de biografías factuales construido con **Google ADK (Agent Development Kit v1.36.0)** y preparado para **Vertex AI Agent Runtime** y **Google Cloud Run**.
 
 > [!IMPORTANT]
 > **🎯 Objetivo Principal del Proyecto**:  
@@ -19,12 +19,12 @@ Agente de investigación y generación de biografías factuales construido con *
 ```mermaid
 graph TD
     subgraph Cliente["Cliente / Interfaz"]
-        A["curl / REST Client / CLI"] -->|"HTTPS + Bearer Token"| B["Cloud Run: bio-agent"]
+        A["curl / REST Client / CLI"] -->|"HTTPS + Bearer Token"| B["Cloud Run / Agent Runtime: bio-agent"]
     end
 
-    subgraph Servidor["Servidor FastAPI / ADK 2.0"]
+    subgraph Servidor["Servidor FastAPI / ADK"]
         B --> C["FastAPI App (app/fast_api_app.py)"]
-        C --> D["ADK 2.0 Runner / Agent (app/agent.py)"]
+        C --> D["ADK Runner / Agent (app/agent.py)"]
         D --> E["Modelo: Gemini Flash Latest"]
         D --> F["Tool: Google Search Grounding"]
     end
@@ -71,10 +71,14 @@ bio-agent/
 ## 🧩 Componentes Principales
 
 ### 1. Núcleo del Agente ([`app/agent.py`](app/agent.py))
-- **Framework**: ADK 2.0 (`google-adk`).
+- **Framework**: Google ADK (`google-adk` v1.36.0).
 - **Modelo**: `gemini-flash-latest` (vía Vertex AI).
 - **Herramientas**: `google_search` para fundamentación factual (grounding).
-- **Entrada Multimodal**: Admite documentos adjuntos (PDFs, CVs, texto) como input inicial para extraer la identidad del sujeto y realizar búsquedas factuales en Google Search.
+- **Gestión de Archivos y Artefactos**:
+  - `before_agent_process_attachments_callback`: Detecta, persiste y carga archivos adjuntos.
+  - Carga proactiva con `load_artifact` del ADK hacia el contexto del modelo (`user_content.parts`).
+  - Persistencia automática en el `ArtifactService` mediante `save_artifact`.
+  - Deduplicación inteligente para prevenir partes redundantes en la ventana de contexto.
 - **Plugins**: [`BigQueryAgentAnalyticsPlugin`](app/plugins/bigquery_analytics_plugin.py) para captura de analítica conversacional sanitizada.
 
 ### 2. Servidor Backend ([`app/fast_api_app.py`](app/fast_api_app.py))
@@ -87,6 +91,61 @@ bio-agent/
 ### 3. Adaptador de Reasoning Engine ([`app/app_utils/reasoning_engine_adapter.py`](app/app_utils/reasoning_engine_adapter.py))
 - **Gemini Enterprise & Vertex AI**: Expone `/api/stream_reasoning_engine` y `/api/reasoning_engine` permitiendo la integración nativa con Gemini Enterprise mediante el contrato de Reasoning Engine (`:streamQuery`).
 - **Resolución Nativa de ADK**: Utiliza la gestión nativa de sesiones de `AdkApp` (`VertexAiSessionService` en producción y memoria local durante desarrollo).
+
+---
+
+## 📂 Gestión de Archivos Adjuntos y Artefactos (ADK & Gemini Enterprise)
+
+El agente está diseñado para procesar documentos (PDFs, Word, texto, CVs) de manera unificada a través de dos mecanismos de entrada:
+
+```mermaid
+flowchart TD
+    subgraph Origenes["1. Orígenes de Entrada"]
+        UI["ADK Web UI / Endpoints REST<br/>(/apps/.../artifacts)"]
+        GE["Gemini Enterprise / Mensaje Multimodal<br/>(inline_data o file_data)"]
+    end
+
+    subgraph Hook["2. before_agent_process_attachments_callback"]
+        Detect["callback_context.list_artifacts()<br/>Inspecciona ArtifactService"]
+        Load["load_artifact(filename)<br/>Recupera types.Part de la sesión"]
+        Save["save_artifact(filename, part)<br/>Persiste archivos inline nuevos"]
+        Inject["user_content.parts.append(artifact_part)<br/>Inyección directa al prompt"]
+    end
+
+    subgraph LLM["3. Razonamiento y Grounding"]
+        Gemini["Gemini Flash (Ventana Multimodal)<br/>Contexto unificado: Prompt + Documentos"]
+        Search["google_search (Grounding Web)<br/>Verifica y complementa datos externamente"]
+    end
+
+    UI --> Detect --> Load --> Inject
+    GE --> Save
+    GE --> Inject
+    Inject --> Gemini
+    Gemini --> Search
+```
+
+### 1. Carga Proactiva al Contexto Multimodal (`load_artifact`)
+Cuando un usuario interactúa con el agente mediante la interfaz web de ADK (`adk web`) o la API REST, los archivos subidos residen en el `ArtifactService` de la sesión:
+- El callback `before_agent_process_attachments_callback` lista los artefactos de la sesión (`list_artifacts()`).
+- Para cada archivo disponible, invoca `await callback_context.load_artifact(key)` del ADK.
+- Anexa la parte de contenido (`types.Part`) a `callback_context.user_content.parts`.
+- **Ventaja**: Gemini Flash recibe el archivo en su contexto multimodal desde el primer turno sin requerir que el modelo gaste turnos de razonamiento llamando a herramientas intermedias.
+
+### 2. Persistencia y Deduplicación (`save_artifact`)
+- Cuando un archivo llega embebido directamente en el mensaje (por ejemplo, desde Gemini Enterprise como `inline_data` base64), el callback lo guarda automáticamente en el `ArtifactService` con `save_artifact(file_name, part)`.
+- Se mantiene un registro de nombres procesados en el turno (`existing_file_names`) para evitar duplicar el contenido del archivo si ya estaba presente en la entrada.
+
+### 3. Compatibilidad con el Grounding de Vertex AI
+En la API de Vertex AI Gemini, existe la regla estricta:
+> *"Multiple tools are supported only when they are all search tools."*
+
+Si se mezclara una herramienta de función como `load_artifacts` con la herramienta de búsqueda `google_search` en `tools`, la API retornaría un error `400 Bad Request`.
+Al realizar la carga y persistencia en el `before_agent_callback`:
+- Se preserva `tools=[google_search]` limpio y 100% compatible con Vertex AI.
+- Toda la manipulación de artefactos y archivos se resuelve en el ciclo de vida del agente antes de emitir la llamada al modelo.
+
+### 4. Blindaje de PII en Archivos Grandes
+El módulo [`PiiRedactor`](app/plugins/pii_redactor.py) y el [`PiiRedactingSpanProcessor`](app/app_utils/span_processor.py) filtran automáticamente los binarios base64 y limitan los bloques de texto a 500,000 caracteres, protegiendo las cuotas y latencia de Cloud DLP API cuando se adjuntan documentos extensos.
 
 ---
 
@@ -168,7 +227,7 @@ El sistema soporta dos motores mediante la variable `PII_ENGINE`:
 
 ### 🔍 1. ¿Cómo funciona la Ofuscación en las Trazas (Cloud Trace / OpenTelemetry)?
 
-Cuando el agente se ejecuta en Cloud Run, **ADK 2.0** y **FastAPI** instrumentan automáticamente las llamadas usando OpenTelemetry (`otel_to_cloud=True`). Para permitir la observabilidad completa del contenido conversacional sin filtrar PII:
+Cuando el agente se ejecuta en Cloud Run o Agent Runtime, **ADK** y **FastAPI** instrumentan automáticamente las llamadas usando OpenTelemetry (`otel_to_cloud=True`). Para permitir la observabilidad completa del contenido conversacional sin filtrar PII:
 1. **Captura Completa de Contenido**: Se habilita `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=SPAN_AND_EVENT` y `ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=true`.
 2. **Inyección Prioritaria (Prepending)**: La función [`setup_pii_trace_redaction()`](app/app_utils/telemetry.py#L19-L48) antepone [`PiiRedactingSpanProcessor`](app/app_utils/span_processor.py) como el primer elemento en `provider._active_span_processor._span_processors`.
 3. **Ejecución Antes de Exportadores**: Su método `on_end(span)` se ejecuta **antes** de que el exportador por lotes (`BatchSpanProcessor`) envíe los datos a Cloud Trace.
@@ -226,12 +285,12 @@ make help
 |---|---|
 | `make install` | Instala dependencias del proyecto usando `uv` |
 | `make run` | Prueba rápida del agente en la terminal (`make run PROMPT="..."`) |
-| `make test-remote` | Prueba el agente desplegado en Cloud Run |
+| `make test` | Ejecuta las pruebas unitarias e integración con pytest |
 | `make server` | Servidor FastAPI local en `http://localhost:8000` |
 | `make playground` | Interfaz web interactiva (ADK Web Playground) |
 | `make eval` | Ejecuta la evaluación con juez LLM |
-| `make deploy` | Garantiza el Session Engine y despliega en **Cloud Run** |
-| `make test` | Ejecuta las pruebas unitarias e integración con pytest |
+| `make deploy` | Despliega el agente en **Vertex AI Agent Runtime (Agent Engine)** |
+| `make publish-gemini-enterprise` | Publica o actualiza el agente en **Gemini Enterprise** |
 | `make clean` | Limpia artefactos y cachés temporales |
 
 ---
