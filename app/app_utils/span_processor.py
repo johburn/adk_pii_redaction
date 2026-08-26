@@ -125,10 +125,14 @@ class PiiRedactingSpanProcessor(SpanProcessor):
             return {k: self._redact_val(v, depth + 1, max_depth) for k, v in val.items()}
         elif isinstance(val, (int, float, bool)):
             return val
+        elif isinstance(val, (bytes, bytearray)):
+            return val
         else:
             # Handle custom objects (like LlmRequest, LlmResponse) attached to span attributes
             try:
                 val_str = str(val)
+                if len(val_str) > 500_000:
+                    return val
                 redacted_str = self.redact_text(val_str)
                 if redacted_str != val_str:
                     return redacted_str

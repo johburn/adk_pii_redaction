@@ -264,6 +264,10 @@ class PiiRedactor:
         if self.engine == "regex":
             return self._redact_with_regex(text)
 
+        if len(text) > 500_000:
+            # Evita exceder el límite de payload de Cloud DLP API (500 KB) usando regex local
+            return self._redact_with_regex(text)
+
         if self.engine == "dlp":
             return self._redact_with_dlp(text)
 
