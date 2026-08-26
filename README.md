@@ -18,26 +18,26 @@ Agente de investigación y generación de biografías factuales construido con *
 
 ```mermaid
 graph TD
-    subgraph Cliente / Interfaz
-        A[curl / REST Client / CLI] -->|HTTPS + Bearer Token| B[Cloud Run: bio-agent]
+    subgraph Cliente["Cliente / Interfaz"]
+        A["curl / REST Client / CLI"] -->|"HTTPS + Bearer Token"| B["Cloud Run: bio-agent"]
     end
 
-    subgraph Servidor FastAPI / ADK 2.0
-        B --> C[FastAPI App app/fast_api_app.py]
-        C --> D[ADK 2.0 Runner / Agent app/agent.py]
-        D --> E[Modelo: Gemini Flash Latest]
-        D --> F[Tool: Google Search Grounding]
+    subgraph Servidor["Servidor FastAPI / ADK 2.0"]
+        B --> C["FastAPI App (app/fast_api_app.py)"]
+        C --> D["ADK 2.0 Runner / Agent (app/agent.py)"]
+        D --> E["Modelo: Gemini Flash Latest"]
+        D --> F["Tool: Google Search Grounding"]
     end
 
-    subgraph Gestión de Sesiones
-        C -->|agentengine://| G[Vertex AI Agent Platform Sessions]
-        G --> H[Reasoning Engine: bio-agent-session-engine]
+    subgraph Sesiones["Gestión de Sesiones"]
+        C -->|"agentengine://"| G["Vertex AI Agent Platform Sessions"]
+        G --> H["Reasoning Engine: biography_agent"]
     end
 
-    subgraph Telemetría y Analítica (Observabilidad)
-        D -->|OpenTelemetry| I[Google Cloud Trace]
-        D -->|BigQuery Analytics Plugin| K[BigQuery: adk_agent_analytics]
-        K --> L[Tabla: agent_events & Vistas BI]
+    subgraph Observabilidad["Telemetría y Analítica (Observabilidad)"]
+        D -->|"OpenTelemetry"| I["Google Cloud Trace"]
+        D -->|"BigQuery Analytics Plugin"| K["BigQuery: adk_biography_agent"]
+        K --> L["Tabla: agent_events & Vistas BI"]
     end
 ```
 
@@ -96,21 +96,22 @@ El sistema implementa una **doble barrera de sanitización perimetral** orquesta
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Usuario / Cliente
-    participant API as FastAPI / ADK Runner (app/fast_api_app.py)
-    participant Model as Gemini LLM (Vertex AI)
-    participant OTel as OpenTelemetry TracerProvider
-    participant SpanProc as PiiRedactingSpanProcessor (app/app_utils/span_processor.py)
-    participant Redactor as PiiRedactor (app/plugins/pii_redactor.py)
-    participant DLP as Google Cloud DLP API (SDP)
-    participant Trace as Google Cloud Trace
-    participant BQPlugin as BigQueryAgentAnalyticsPlugin
-    participant BigQuery as BigQuery (adk_biography_agent.agent_events)
+    actor User as "Usuario / Cliente"
+    participant API as "FastAPI / ADK Runner"
+    participant Model as "Gemini LLM (Vertex AI)"
+    participant OTel as "OpenTelemetry TracerProvider"
+    participant SpanProc as "PiiRedactingSpanProcessor"
+    participant Redactor as "PiiRedactor (DLP / Regex)"
+    participant DLP as "Google Cloud DLP API (SDP)"
+    participant Trace as "Google Cloud Trace"
+    participant BQPlugin as "BigQueryAgentAnalyticsPlugin"
+    participant BigQuery as "BigQuery (agent_events)"
 
-    User->>API: Prompt con PII (ej: "Genera biografía de Alan Turing")
+    User->>API: Prompt con PII (ej. Genera biografia de Alan Turing)
     Note over API,Model: Modo traces_only: El modelo recibe el texto real intacto
     API->>Model: Consulta a Gemini con datos reales para biografía factual
     Model-->>API: Respuesta generada por Gemini
+
     
     rect rgb(230, 245, 255)
     Note over API,Trace: Barrera 1: Sanitización de Trazas (Cloud Trace)
