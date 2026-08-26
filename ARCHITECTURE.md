@@ -1,6 +1,14 @@
 # Arquitectura del Agente (`bio-agent`) 🏛️
 
-El agente **`bio-agent`** es una aplicación agentic construida con **Google ADK 2.0 (Agent Development Kit)**, desplegada en **Google Cloud Run** e instrumentada con observabilidad nativa para GCP.
+El agente **`bio-agent`** es una aplicación agentic construida con **Google ADK 2.0 (Agent Development Kit)**, desplegada en **Google Cloud Run** e instrumentada con observabilidad nativa para Google Cloud Platform.
+
+### 🎯 Propósito y Demostrador de Privacidad
+El propósito arquitectónico fundamental de este proyecto es servir como **arquitectura de referencia sobre cómo capturar trazas conversacionales completas en Google Cloud Trace (OpenTelemetry) y analítica en Google BigQuery, asegurando la ofuscación estricta de cualquier dato sensible (PII)** mediante **Google Cloud Sensitive Data Protection (Cloud DLP / SDP)** y fallback local a Regex.
+
+El principio rector del diseño es la **separación de responsabilidades**:
+* **El Agente opera sin censura en memoria**: El LLM (Gemini) recibe el prompt real del usuario para que sus capacidades cognitivas y herramientas (`google_search`) funcionen con fidelidad factual.
+* **La Ofuscación actúa en la frontera de observabilidad y almacenamiento**: Antes de emitir las trazas hacia Cloud Trace o insertar registros en BigQuery, los componentes de integración interceptan y sustituyen nombres, correos, teléfonos y números de identificación por marcadores estándar (`[PERSON_NAME]`, `[EMAIL_ADDRESS]`, etc.).
+
 
 ---
 

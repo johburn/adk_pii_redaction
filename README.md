@@ -1,6 +1,15 @@
 # bio-agent 🤖
 
-Agente de generación de biografías factuales generado con **Google ADK 2.0 (Agent Development Kit)** y preparado para **Google Cloud Run**.
+Agente de investigación y generación de biografías factuales construido con **Google ADK 2.0 (Agent Development Kit)** y preparado para **Google Cloud Run**.
+
+> [!IMPORTANT]
+> **🎯 Objetivo Principal del Proyecto**:  
+> Aunque este servicio implementa un agente funcional de investigación de biografías, su **propósito arquitectónico fundamental es demostrar cómo ofuscar y proteger información sensible (PII) en las trazas distribuidas de observabilidad (Google Cloud Trace / OpenTelemetry) y en el registro de analítica conversacional (Google BigQuery)**.
+> 
+> El patrón de diseño implementado demuestra cómo garantizar la privacidad sin degradar la inteligencia del agente:
+> 1. **Comunicación Transparente con el Modelo**: Gemini recibe las consultas reales del usuario sin ofuscar para ejecutar búsquedas web precisas (`google_search`) y generar respuestas contextualmente ricas.
+> 2. **Anonimización Estricta en la Frontera de Exportación**: Tanto el procesador de OpenTelemetry ([`PiiRedactingSpanProcessor`](app/app_utils/span_processor.py)) como el formateador de analítica ([`bq_pii_content_formatter`](app/plugins/bigquery_analytics_plugin.py)) interceptan los datos antes de salir hacia **Cloud Trace** y **BigQuery**, aplicando de-identificación en tiempo real con **Google Cloud Sensitive Data Protection (SDP / Cloud DLP)** y plantillas corporativas con fallback resiliente a Regex local.
+
 
 ---
 
