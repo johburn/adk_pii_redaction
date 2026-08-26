@@ -24,7 +24,7 @@ def ensure_session_engine(display_name: str = "biography_agent") -> str:
     }
 
     # 1. List existing reasoning engines via REST
-    resp = requests.get(url, headers=headers)
+    resp = requests.get(url, headers=headers, timeout=15)
     if resp.status_code == 200:
         engines = resp.json().get("reasoningEngines", [])
         for engine in engines:
@@ -39,7 +39,8 @@ def ensure_session_engine(display_name: str = "biography_agent") -> str:
         "displayName": display_name,
         "description": f"Dedicated session engine for {display_name} service"
     }
-    resp = requests.post(url, headers=headers, json=body)
+    resp = requests.post(url, headers=headers, json=body, timeout=30)
+
     resp_data = resp.json()
 
     if "name" in resp_data:

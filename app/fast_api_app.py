@@ -17,17 +17,14 @@ import os
 import google.auth
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
-from google.cloud import logging as google_cloud_logging
 
 from app.app_utils.telemetry import setup_pii_trace_redaction, setup_telemetry
-from app.app_utils.types_def import Feedback
 
 
 setup_telemetry()
 _, project_id = google.auth.default()
-logging_client = google_cloud_logging.Client()
-logger = logging_client.logger(__name__)
 allow_origins = (
+
     os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
 )
 
@@ -62,22 +59,8 @@ app.title = "biography_agent"
 app.description = "API for interacting with the Agent biography_agent"
 
 
-
-@app.post("/feedback")
-def collect_feedback(feedback: Feedback) -> dict[str, str]:
-    """Collect and log feedback.
-
-    Args:
-        feedback: The feedback data to log
-
-    Returns:
-        Success message
-    """
-    logger.log_struct(feedback.model_dump(), severity="INFO")
-    return {"status": "success"}
-
-
 # Main execution
+
 if __name__ == "__main__":
     import uvicorn
 

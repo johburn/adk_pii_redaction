@@ -53,9 +53,11 @@ def setup_telemetry() -> str | None:
     # 1. Configurar OTEL_SERVICE_NAME para identificación en Cloud Trace
     os.environ.setdefault("OTEL_SERVICE_NAME", "biography-agent")
 
-    # 2. Configurar convenciones semánticas de GenAI para captura de metadatos y tokens
+    # 2. Configurar convenciones semánticas de GenAI para captura de contenido y metadatos
     os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experimental")
-    os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "NO_CONTENT")
+    os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "SPAN_AND_EVENT")
+    os.environ.setdefault("ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS", "true")
+
 
     commit_sha = os.environ.get("COMMIT_SHA", "dev")
     os.environ.setdefault(

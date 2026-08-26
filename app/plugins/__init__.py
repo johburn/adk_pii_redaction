@@ -18,8 +18,8 @@ from app.plugins.bigquery_analytics_plugin import (
     InitBigQueryAnalyticsPlugin,
     setup_bigquery_analytics_plugin,
 )
-from app.plugins.pii_redaction_plugin import PiiRedactionPlugin
-from app.plugins.pii_redactor import PiiRedactor
+from app.plugins.pii_redactor import PiiRedactor, PiiRedactionPlugin
+
 
 __all__ = [
     "PiiRedactor",

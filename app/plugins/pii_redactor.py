@@ -19,7 +19,14 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
+from google.adk.agents.callback_context import CallbackContext
+from google.adk.models.llm_request import LlmRequest
+from google.adk.models.llm_response import LlmResponse
+from google.adk.plugins.base_plugin import BasePlugin
+from google.genai import types
+
 logger = logging.getLogger(__name__)
+
 
 DEFAULT_PII_PATTERNS = {
     "EMAIL": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
@@ -46,8 +53,12 @@ REGEX_TO_INFOTYPE_MAP = {
     "IP_ADDRESS": "IP_ADDRESS",
 }
 
+DEFAULT_DLP_LOCATION = "us-central1"
+DEFAULT_DLP_DEIDENTIFY_TEMPLATE = "agent-template"
+
 
 class PiiRedactor:
+
     """Centralized PII redactor supporting Google Cloud DLP (SDP) and Regex engines."""
 
     def __init__(
@@ -69,7 +80,20 @@ class PiiRedactor:
             or os.environ.get("PII_ENGINE", "hybrid").lower()
         )
         self.project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
-        self.location = location or os.environ.get("DLP_LOCATION", "global")
+        if not self.project_id:
+            try:
+                import google.auth
+                _, default_proj = google.auth.default()
+                self.project_id = default_proj
+            except Exception:
+                pass
+
+        self.location = (
+            location
+            or os.environ.get("DLP_LOCATION")
+            or os.environ.get("GOOGLE_CLOUD_LOCATION")
+            or DEFAULT_DLP_LOCATION
+        )
 
         # InfoTypes configuration
         if info_types is not None:
@@ -81,15 +105,21 @@ class PiiRedactor:
             else:
                 self.info_types = DEFAULT_DLP_INFOTYPES
 
-        self.deidentify_template = (
-            deidentify_template or os.environ.get("DLP_DEIDENTIFY_TEMPLATE")
-        )
+        if deidentify_template is not None:
+            self.deidentify_template = deidentify_template
+        else:
+            self.deidentify_template = os.environ.get(
+                "DLP_DEIDENTIFY_TEMPLATE", DEFAULT_DLP_DEIDENTIFY_TEMPLATE
+            )
+
         self.inspect_template = (
             inspect_template or os.environ.get("DLP_INSPECT_TEMPLATE")
         )
         self.min_likelihood = (
-            min_likelihood or os.environ.get("DLP_MIN_LIKELIHOOD", "LIKELY")
+            min_likelihood or os.environ.get("DLP_MIN_LIKELIHOOD", "POSSIBLE")
         )
+
+
 
         # Regex fallback patterns
         self.patterns = patterns if patterns is not None else DEFAULT_PII_PATTERNS
@@ -149,6 +179,19 @@ class PiiRedactor:
             redacted = regex.sub(replacement, redacted)
         return redacted
 
+    def _resolve_template_name(
+        self, template: Optional[str], template_type: str = "deidentifyTemplates"
+    ) -> Optional[str]:
+        """Resolves a template ID or full resource name to a fully-qualified GCP resource path."""
+        if not template:
+            return None
+        if template.startswith("projects/"):
+            return template
+
+        if self.location and self.location != "global":
+            return f"projects/{self.project_id}/locations/{self.location}/{template_type}/{template}"
+        return f"projects/{self.project_id}/{template_type}/{template}"
+
     def _redact_with_dlp(self, text: str) -> str:
         """Invokes Google Cloud DLP (SDP) deidentify_content API."""
         if not text or not self.project_id:
@@ -173,8 +216,11 @@ class PiiRedactor:
             "item": item,
         }
 
-        if self.deidentify_template:
-            request["deidentify_template_name"] = self.deidentify_template
+        resolved_deid_tmpl = self._resolve_template_name(
+            self.deidentify_template, "deidentifyTemplates"
+        )
+        if resolved_deid_tmpl:
+            request["deidentify_template_name"] = resolved_deid_tmpl
         else:
             request["deidentify_config"] = {
                 "info_type_transformations": {
@@ -188,8 +234,11 @@ class PiiRedactor:
                 }
             }
 
-        if self.inspect_template:
-            request["inspect_template_name"] = self.inspect_template
+        resolved_insp_tmpl = self._resolve_template_name(
+            self.inspect_template, "inspectTemplates"
+        )
+        if resolved_insp_tmpl:
+            request["inspect_template_name"] = resolved_insp_tmpl
         else:
             likelihood_enum = getattr(
                 dlp_v2.Likelihood,
@@ -200,6 +249,7 @@ class PiiRedactor:
                 "info_types": [{"name": it} for it in self.info_types],
                 "min_likelihood": likelihood_enum,
             }
+
 
         response = client.deidentify_content(request=request)
         if response and response.item and response.item.value:
@@ -232,4 +282,95 @@ class PiiRedactor:
                 )
                 self._dlp_warning_logged = True
             return self._redact_with_regex(text)
+
+
+class PiiRedactionPlugin(BasePlugin):
+    """ADK Plugin that inspects and redacts PII across user messages, model inputs/outputs, and tool results."""
+
+    def __init__(
+        self,
+        name: str = "pii_redaction_plugin",
+        patterns: Optional[Dict[str, str]] = None,
+        enabled: bool = True,
+        engine: Optional[str] = None,
+        redactor: Optional[PiiRedactor] = None,
+        token_format: Optional[str] = None,
+    ) -> None:
+        super().__init__(name=name)
+        self.enabled = enabled
+        self.patterns = patterns if patterns is not None else DEFAULT_PII_PATTERNS
+        self.redactor = redactor or PiiRedactor(
+            engine=engine,
+            enabled=enabled,
+            patterns=self.patterns,
+            token_format=token_format,
+        )
+
+    def redact_text(self, text: str) -> str:
+        """Applies configured redactor (Cloud DLP / Regex) to replace PII in the given string."""
+        if not text or not self.enabled:
+            return text
+        return self.redactor.redact_text(text)
+
+    def _redact_content(self, content: Optional[types.Content]) -> None:
+        """Helper to redact text in all parts of a types.Content object in-place."""
+        if not content or not hasattr(content, "parts") or not content.parts:
+            return
+        for part in content.parts:
+            if hasattr(part, "text") and part.text:
+                part.text = self.redact_text(part.text)
+
+    async def on_user_message_callback(
+        self, *, invocation_context: Any, user_message: types.Content
+    ) -> Optional[types.Content]:
+        """Intercepts incoming user messages and redacts PII before processing."""
+        if not self.enabled or not user_message:
+            return None
+        self._redact_content(user_message)
+        return user_message
+
+    async def before_model_callback(
+        self, *, callback_context: CallbackContext, llm_request: LlmRequest
+    ) -> Optional[LlmResponse]:
+        """Intercepts model request and redacts PII in all content items prior to LLM call."""
+        if not self.enabled or not llm_request:
+            return None
+        if hasattr(llm_request, "contents") and llm_request.contents:
+            for content in llm_request.contents:
+                self._redact_content(content)
+        return None
+
+    async def after_model_callback(
+        self, *, callback_context: CallbackContext, llm_response: LlmResponse
+    ) -> Optional[LlmResponse]:
+        """Intercepts model response and redacts PII in generated output before returning to caller."""
+        if not self.enabled or not llm_response:
+            return None
+        if hasattr(llm_response, "content") and llm_response.content:
+            self._redact_content(llm_response.content)
+        return llm_response
+
+    async def after_tool_callback(
+        self,
+        *,
+        tool: Any,
+        tool_args: dict[str, Any],
+        tool_context: Any,
+        result: dict,
+    ) -> Optional[dict]:
+        """Intercepts tool execution results and redacts PII in string data structures."""
+        if not self.enabled or not result:
+            return None
+
+        def _redact_obj(obj: Any) -> Any:
+            if isinstance(obj, str):
+                return self.redact_text(obj)
+            elif isinstance(obj, dict):
+                return {k: _redact_obj(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [_redact_obj(v) for v in obj]
+            return obj
+
+        return _redact_obj(result)
+
 

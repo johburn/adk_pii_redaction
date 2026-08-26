@@ -16,13 +16,19 @@ FROM python:3.12-slim
 
 RUN pip install --no-cache-dir uv==0.8.13
 
+# Create non-privileged user for security compliance (CWE-250)
+RUN useradd -m -u 1000 appuser
+
 WORKDIR /code
 
 COPY ./pyproject.toml ./README.md ./uv.lock* ./
 
 COPY ./app ./app
 
-RUN uv sync --index-url https://pypi.org/simple
+RUN uv sync --index-url https://pypi.org/simple && chown -R appuser:appuser /code
+
+USER appuser
+
 
 ARG COMMIT_SHA=""
 ENV COMMIT_SHA=${COMMIT_SHA}

@@ -24,10 +24,43 @@ from app.plugins.pii_redactor import DEFAULT_PII_PATTERNS, PiiRedactor
 logger = logging.getLogger(__name__)
 
 
+TARGET_ATTRIBUTE_KEYS = {
+    "gen_ai.prompt",
+    "gen_ai.completion",
+    "gen_ai.system",
+    "gcp.vertex.agent.llm_request",
+    "gcp.vertex.agent.llm_response",
+    "user_input",
+    "user_message",
+    "message",
+    "messages",
+    "prompt",
+    "completion",
+    "input",
+    "output",
+    "query",
+    "tags",
+}
+
+TARGET_ATTRIBUTE_SUFFIXES = (
+    ".prompt",
+    ".completion",
+    ".request",
+    ".response",
+    ".content",
+    ".input",
+    ".output",
+    ".query",
+    ".message",
+    ".messages",
+)
+
+
 class PiiRedactingSpanProcessor(SpanProcessor):
     """OpenTelemetry SpanProcessor that inspects and redacts PII in span attributes
 
     and span events before passing spans to downstream processors or exporters.
+    Optimized to selectively target user/LLM content attributes, bypassing technical telemetry.
     """
 
     def __init__(
@@ -55,17 +88,41 @@ class PiiRedactingSpanProcessor(SpanProcessor):
             return text
         return self.redactor.redact_text(text)
 
+    def _is_target_attribute(self, key: str) -> bool:
+        """Determines if a span attribute is susceptible to containing sensitive user/LLM content."""
+        if not key:
+            return False
+        key_lower = key.lower()
+        if key_lower in TARGET_ATTRIBUTE_KEYS or key_lower.endswith(TARGET_ATTRIBUTE_SUFFIXES):
+            return True
+        return any(
+            token in key_lower
+            for token in (
+                "prompt",
+                "completion",
+                "request",
+                "response",
+                "content",
+                "message",
+                "user",
+                "query",
+                "tag",
+                "email",
+                "phone",
+                "pii",
+            )
+        )
 
-    def _redact_val(self, val: Any) -> Any:
-        if not self.enabled or val is None:
+    def _redact_val(self, val: Any, depth: int = 0, max_depth: int = 10) -> Any:
+        if not self.enabled or val is None or depth > max_depth:
             return val
 
         if isinstance(val, str):
             return self.redact_text(val)
         elif isinstance(val, (list, tuple)):
-            return [self._redact_val(v) for v in val]
+            return [self._redact_val(v, depth + 1, max_depth) for v in val]
         elif isinstance(val, dict):
-            return {k: self._redact_val(v) for k, v in val.items()}
+            return {k: self._redact_val(v, depth + 1, max_depth) for k, v in val.items()}
         elif isinstance(val, (int, float, bool)):
             return val
         else:
@@ -79,6 +136,7 @@ class PiiRedactingSpanProcessor(SpanProcessor):
                 logger.debug("Failed to stringify object attribute: %s", e)
         return val
 
+
     def on_end(self, span: ReadableSpan) -> None:
         """Called when a span is ended. Redacts attributes and events on the span."""
         if not self.enabled:
@@ -86,12 +144,16 @@ class PiiRedactingSpanProcessor(SpanProcessor):
                 self.wrapped_processor.on_end(span)
             return
 
-        # Redact span attributes
+        # Redact span attributes selectively
         if getattr(span, "_attributes", None) is not None:
             redacted_attributes = {}
             for key, val in span._attributes.items():
-                redacted_attributes[key] = self._redact_val(val)
+                if self._is_target_attribute(key):
+                    redacted_attributes[key] = self._redact_val(val)
+                else:
+                    redacted_attributes[key] = val
             span._attributes = redacted_attributes
+
 
         # Redact span events if present
         if getattr(span, "_events", None) is not None:

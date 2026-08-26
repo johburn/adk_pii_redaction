@@ -4,11 +4,14 @@
 
 .PHONY: help install run test-remote playground server eval deploy dashboard lint test sessions-demo clean
 
+export PATH := /Users/jburmester/Downloads/google-cloud-sdk/bin:$(HOME)/.local/bin:$(HOME)/.cargo/bin:$(PATH)
+
 PROJECT_ID ?= gke-service-project-081292
 REGION ?= us-central1
 EVALSET ?= tests/eval/evalsets/biography.evalset.json
 EVAL_CONFIG ?= tests/eval/eval_config.json
 CLOUD_RUN_URL ?= https://biography-agent-938422762731.us-central1.run.app
+
 
 
 help: ## Muestra este menú de ayuda
@@ -27,7 +30,13 @@ run: ## Ejecuta una prueba rápida del agente local (ej: make run PROMPT="Genera
 test-remote: ## Pruebas en el agente remoto desplegado en Cloud Run (ej: make test-remote PROMPT="...")
 	@PROMPT="$(PROMPT)"; \
 	if [ -z "$$PROMPT" ]; then PROMPT="Genera una biografía breve de Rosalind Franklin"; fi; \
-	agents-cli run --url $(CLOUD_RUN_URL) --mode adk "$$PROMPT"
+	TOKEN=$$(gcloud auth print-identity-token 2>/dev/null); \
+	if [ -n "$$TOKEN" ]; then \
+		agents-cli run --url $(CLOUD_RUN_URL) --mode adk -H "Authorization: Bearer $$TOKEN" "$$PROMPT"; \
+	else \
+		agents-cli run --url $(CLOUD_RUN_URL) --mode adk "$$PROMPT"; \
+	fi
+
 
 playground: ## Inicia el ADK Web Playground interactivo
 	agents-cli playground
@@ -39,12 +48,10 @@ eval: ## Ejecuta el set de pruebas de evaluación con juez LLM (evalset)
 	uv run python -m google.adk.cli eval app $(EVALSET) --config_file_path $(EVAL_CONFIG)
 
 deploy: ## Garantiza la existencia del Reasoning Engine de sesiones y despliega en Cloud Run
-	@RESOURCE_NAME=$$(.venv/bin/python app/app_utils/ensure_session_engine.py 2>/dev/null | tr -d '\n\r'); \
+	@RESOURCE_NAME=$$(uv run python app/app_utils/ensure_session_engine.py 2>/dev/null | tr -d '\n\r'); \
 	echo "✓ Session Engine listo: $$RESOURCE_NAME"; \
 	agents-cli deploy --project $(PROJECT_ID) --region $(REGION) --update-env-vars AGENT_ENGINE_ID=$$RESOURCE_NAME --no-confirm-project
 
-dashboard: ## Despliega/Actualiza el Dashboard de Monitoreo en Google Cloud Monitoring
-	gcloud monitoring dashboards create --config-from-file=dashboard_cloud_monitoring.json --project=$(PROJECT_ID)
 
 lint: ## Ejecuta el linter (ruff) y verificación de código
 	agents-cli lint

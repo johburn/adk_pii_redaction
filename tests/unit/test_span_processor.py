@@ -137,3 +137,29 @@ def test_span_processor_lifecycle_delegation():
 
     processor.force_flush(1000)
     wrapped.force_flush.assert_called_once_with(1000)
+
+
+def test_span_processor_bypasses_technical_telemetry_attributes():
+    wrapped = MagicMock()
+    processor = PiiRedactingSpanProcessor(
+        wrapped_processor=wrapped, enabled=True, engine="regex"
+    )
+
+    span = MockSpan(
+        attributes={
+            "http.method": "POST",
+            "http.status_code": 200,
+            "telemetry.sdk.language": "python",
+            "server.address": "localhost",
+            "gen_ai.prompt": "Contact me at user@example.com",
+        }
+    )
+
+    processor.on_end(span)
+
+    assert span.attributes["http.method"] == "POST"
+    assert span.attributes["http.status_code"] == 200
+    assert span.attributes["telemetry.sdk.language"] == "python"
+    assert span.attributes["server.address"] == "localhost"
+    assert "[REDACTED_EMAIL]" in span.attributes["gen_ai.prompt"]
+

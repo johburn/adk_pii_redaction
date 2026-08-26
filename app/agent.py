@@ -26,15 +26,18 @@ import google.auth
 from google.genai import types
 
 from app.app_utils.telemetry import setup_telemetry
-from app.plugins import InitBigQueryAnalyticsPlugin, PiiRedactionPlugin
+from app.plugins import InitBigQueryAnalyticsPlugin
+
 
 setup_telemetry()
 
 _, project_id = google.auth.default()
 
-os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
+if project_id:
+    os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
 os.environ["GOOGLE_CLOUD_LOCATION"] = "global"
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
+
 
 
 INSTRUCTION = """
@@ -64,17 +67,12 @@ root_agent = Agent(
     tools=[google_search],
 )
 
-# Initialize Plugins
+# Initialize Plugins (BigQuery Analytics con ofuscación PII)
 _plugins = []
-_pii_enabled = os.environ.get("ENABLE_PII_REDACTION", "true").lower() == "true"
-_pii_mode = os.environ.get("PII_REDACTION_MODE", "traces_only").lower()
-
-if _pii_enabled and _pii_mode in ("in_flight", "both"):
-    _plugins.append(PiiRedactionPlugin())
-
 bq_plugin = InitBigQueryAnalyticsPlugin()
 if bq_plugin:
     _plugins.append(bq_plugin)
+
 
 app = App(
     root_agent=root_agent,

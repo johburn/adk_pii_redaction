@@ -94,13 +94,16 @@ Cuando el agente se ejecuta en Cloud Run, **ADK 2.0** y **FastAPI** instrumentan
 Para evitar esto:
 1. **Inyección Prioritaria**: La función [`setup_pii_trace_redaction()`](app/app_utils/telemetry.py#L19-L48) en [`app/app_utils/telemetry.py`](app/app_utils/telemetry.py) obtiene el `TracerProvider` activo y antepone una instancia de [`PiiRedactingSpanProcessor`](app/app_utils/span_processor.py#L27-L125) al inicio de la lista `_span_processors`.
 2. **Ejecución Antes de Exportadores**: Al estar ubicado como el primer procesador de la cadena, su método [`on_end(span)`](app/app_utils/span_processor.py#L78-L112) se ejecuta **antes** de que el exportador por lotes (`BatchSpanProcessor` / `CloudTraceSpanExporter`) serialice y envíe los spans a Google Cloud Trace.
-3. **Sanitización de Atributos y Eventos**:
-   - **`span._attributes`**: Itera recursivamente mediante [`_redact_val()`](app/app_utils/span_processor.py#L55-L76) sobre cadenas, listas, diccionarios y objetos complejos de ADK (tales como `LlmRequest` y `LlmResponse`), saneándolos con [`PiiRedactor.redact_text()`](app/plugins/pii_redactor.py).
-   - **`span._events`**: Reconstruye cada objeto `Event` saneando tanto el nombre del evento como todos sus atributos asociados.
+3. **Sanitización Dirigida de Atributos y Eventos**:
+   - Para maximizar la eficiencia y reducir llamadas innecesarias a Cloud DLP, [`PiiRedactingSpanProcessor`](app/app_utils/span_processor.py) filtra selectivamente solo los atributos que contienen texto del usuario y respuestas del LLM (`gen_ai.prompt`, `gen_ai.completion`, `gcp.vertex.agent.llm_request`, `events`, etc.), omitiendo metadatos técnicos de OpenTelemetry.
+   - Sanea atributos recursivamente mediante [`_redact_val()`](app/app_utils/span_processor.py) delegando en [`PiiRedactor.redact_text()`](app/plugins/pii_redactor.py).
+   - Reconstruye cada objeto `Event` saneando tanto el nombre del evento como todos sus atributos asociados.
 4. **Resultado en Cloud Trace**: Los desarrolladores y auditores de observabilidad ven la jerarquía completa de spans, latencias y llamadas a herramientas, pero cualquier dato privado aparece como `[EMAIL_ADDRESS]`, `[PHONE_NUMBER]`, etc.
 
+![Evidencia de Ofuscación en Cloud Trace](docs/assets/cloudtrace_redacted.png)
+
 Archivos clave:
-- Procesador OpenTelemetry: [`app/app_utils/span_processor.py`](app/app_utils/span_processor.py)
+- Procesador OpenTelemetry (sanitización dirigida): [`app/app_utils/span_processor.py`](app/app_utils/span_processor.py)
 - Motor centralizado de redacción: [`app/plugins/pii_redactor.py`](app/plugins/pii_redactor.py)
 - Registro e inicialización de telemetría: [`app/app_utils/telemetry.py`](app/app_utils/telemetry.py)
 - Pruebas unitarias: [`tests/unit/test_span_processor.py`](tests/unit/test_span_processor.py)
@@ -119,7 +122,10 @@ Para asegurar que los logs persistidos en BigQuery no guarden PII sin anonimizar
 3. **Redacción Textual**: Se invoca [`_redactor.redact_text()`](app/plugins/pii_redactor.py), que ejecuta la de-identificación con Cloud DLP (SDP) o el motor Regex fallback.
 4. **Inserción en BigQuery**: El plugin de ADK envía el payload ya sanitizado al servicio de streaming insert de BigQuery.
 
+![Evidencia de Ofuscación en BigQuery](docs/assets/bigquery_redacted.png)
+
 Archivos clave:
+
 - Plugin e inicializador BigQuery: [`app/plugins/bigquery_analytics_plugin.py`](app/plugins/bigquery_analytics_plugin.py)
 - Motor de redacción (Cloud DLP & Regex): [`app/plugins/pii_redactor.py`](app/plugins/pii_redactor.py)
 - Pruebas unitarias: [`tests/unit/test_bigquery_plugin.py`](tests/unit/test_bigquery_plugin.py) y [`tests/unit/test_pii_redactor.py`](tests/unit/test_pii_redactor.py)
@@ -132,13 +138,14 @@ Archivos clave:
 |---|---|---|
 | `ENABLE_PII_REDACTION` | `true` / `false` | Habilita o deshabilita globalmente el sistema de redacción. |
 | `PII_REDACTION_MODE` | `traces_only` | **(Recomendado - Predeterminado)** Gemini recibe la información real intacta para procesar búsquedas y biografías con precisión, mientras que las trazas a **Cloud Trace** y los registros de **BigQuery Analytics** se guardan 100% ofuscados. |
-| | `in_flight` | Activa [`PiiRedactionPlugin`](app/plugins/pii_redaction_plugin.py#L38-L123) en el ciclo de callbacks de ADK; ofusca los datos antes de que lleguen al modelo Gemini. |
+| | `in_flight` | Activa [`PiiRedactionPlugin`](app/plugins/pii_redactor.py) en el ciclo de callbacks de ADK; ofusca los datos antes de que lleguen al modelo Gemini. |
 | | `both` | Aplica redacción tanto en vuelo (LLM request/response) como en la exportación a Cloud Trace y BigQuery. |
 | | `disabled` | Desactiva toda redacción. |
 | `PII_ENGINE` | `hybrid` / `dlp` / `regex` | **(Predeterminado: `hybrid`)** Selecciona el motor de ofuscación: Cloud DLP con fallback, exclusivo Cloud DLP, o solo Regex. |
 | `DLP_LOCATION` | `string` | Región para Cloud DLP API (por defecto `global`). |
 | `DLP_INFO_TYPES` | `string` | Lista separada por comas de detectores DLP (por defecto `EMAIL_ADDRESS,PHONE_NUMBER,PERSON_NAME,...`). |
 | `DLP_DEIDENTIFY_TEMPLATE` | `string` | *(Opcional)* Identificador completo de plantilla de de-identificación en GCP. |
+
 
 
 ---

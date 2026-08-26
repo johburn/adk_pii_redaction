@@ -40,7 +40,8 @@ graph TD
 - **Framework**: ADK 2.0 (`google-adk`).
 - **Modelo**: `gemini-flash-latest` (vía Vertex AI).
 - **Herramientas de Búsqueda**: `google_search` para fundamentación factual (grounding).
-- **Plugins**: [`BigQueryAgentAnalyticsPlugin`](app/plugins/bigquery_analytics_plugin.py#L47-L80) para captura analítica en tiempo real y opcionalmente [`PiiRedactionPlugin`](app/plugins/pii_redaction_plugin.py#L38-L123) según el modo configurado.
+- **Plugins**: [`BigQueryAgentAnalyticsPlugin`](app/plugins/bigquery_analytics_plugin.py#L47-L80) para captura analítica en tiempo real y opcionalmente [`PiiRedactionPlugin`](app/plugins/pii_redactor.py) según el modo configurado.
+
 
 ### 2. Servidor Backend ([`app/fast_api_app.py`](app/fast_api_app.py))
 - **Framework**: FastAPI wrappers de ADK (`get_fast_api_app`).
@@ -48,7 +49,7 @@ graph TD
   - `POST /run`: Ejecución de prompts sobre sesiones.
   - `POST /apps/app/users/{user_id}/sessions`: Creación de sesiones.
   - `GET /health` & `/version`: Verificación del servicio.
-  - `POST /feedback`: Captura de retroalimentación de usuario en Cloud Logging.
+
 
 ### 3. Servicio de Sesiones Persistentes ([`app/app_utils/ensure_session_engine.py`](app/app_utils/ensure_session_engine.py))
 - **Módulo**: `VertexAiSessionService` de ADK.
@@ -125,10 +126,13 @@ sequenceDiagram
      ) + tuple(provider._active_span_processor._span_processors)
      ```
      Esto garantiza que [`PiiRedactingSpanProcessor.on_end()`](app/app_utils/span_processor.py#L78-L112) se ejecute **antes** de que el exportador por lotes (`BatchSpanProcessor`) envíe los spans a GCP.
-  2. **Sanitización profunda de `span._attributes`**:
-     - Tipos primitivos y listas/diccionarios se recorren recursivamente con [`_redact_val()`](app/app_utils/span_processor.py#L55-L76).
+  2. **Sanitización dirigida de `span._attributes`**:
+     - Para maximizar la eficiencia y evitar costes y latencia en Cloud DLP, el procesador evalúa únicamente atributos susceptibles de contener texto del usuario y del LLM (`gen_ai.prompt`, `gen_ai.completion`, `gcp.vertex.agent.llm_request`, `.content`, `.message`, etc.), omitiendo metadatos técnicos de OpenTelemetry.
      - Los objetos complejos de ADK (`LlmRequest`, `LlmResponse`), que OpenTelemetry o ADK guardan como valores de atributos, son convertidos a cadena y redactados mediante [`PiiRedactor`](app/plugins/pii_redactor.py), evitando fugas en atributos como `gcp.vertex.agent.llm_request` o `gen_ai.prompt`.
   3. **Sanitización de `span._events`**: Cada evento asociado al span se reconstruye con sus atributos sanitizados y el nombre del evento ofuscado.
+
+![Evidencia de Ofuscación en Cloud Trace](docs/assets/cloudtrace_redacted.png)
+
 
 #### B. Mecanismo de Ofuscación en BigQuery (Agent Analytics)
 - **Ubicación del Código**:
@@ -144,8 +148,12 @@ sequenceDiagram
      - Se invoca `_redactor.redact_text()`, que evalúa el contenido mediante Cloud DLP o el motor Regex.
   4. **Persistencia Segura**: BigQuery recibe la columna de contenido completamente anonimizada.
 
+![Evidencia de Ofuscación en BigQuery](docs/assets/bigquery_redacted.png)
+
+
 #### C. Integración con Google Cloud Sensitive Data Protection (Cloud DLP / SDP)
 La clase [`PiiRedactor`](app/plugins/pii_redactor.py) proporciona:
+
 - **Llamadas a `deidentify_content`**: Soporta de-identificación inline con `ReplaceWithInfoTypeConfig` o mediante plantillas corporativas (`DLP_DEIDENTIFY_TEMPLATE`).
 - **Detectores (InfoTypes) Estándar**:
   - `EMAIL_ADDRESS`
@@ -159,7 +167,7 @@ La clase [`PiiRedactor`](app/plugins/pii_redactor.py) proporciona:
 #### D. Matriz de Modos de Operación (`PII_REDACTION_MODE` y `PII_ENGINE`)
 - **`PII_REDACTION_MODE`**:
   - `traces_only` (Predeterminado y Recomendado): Gemini LLM recibe el texto real intacto; Cloud Trace y BigQuery reciben datos 100% ofuscados.
-  - `in_flight`: Intercepta mensajes en vuelo antes de que el LLM los reciba mediante [`PiiRedactionPlugin`](app/plugins/pii_redaction_plugin.py).
+  - `in_flight`: Intercepta mensajes en vuelo antes de que el LLM los reciba mediante [`PiiRedactionPlugin`](app/plugins/pii_redactor.py).
   - `both`: Combina redacción en vuelo y redacción en exportadores (trazas y BigQuery).
   - `disabled`: Desactiva la ofuscación.
 - **`PII_ENGINE`**:
@@ -167,13 +175,12 @@ La clase [`PiiRedactor`](app/plugins/pii_redactor.py) proporciona:
   - `dlp`: Exclusivo Cloud DLP API.
   - `regex`: Exclusivo motor Regex local.
 
-#### E. Pruebas Unitarias Asociadas
-Toda la lógica de ofuscación está cubierta y validada por pruebas unitarias automatizadas:
-- Motor Centralizado Cloud DLP & Regex: [`tests/unit/test_pii_redactor.py`](tests/unit/test_pii_redactor.py)
-- Trazas OpenTelemetry: [`tests/unit/test_span_processor.py`](tests/unit/test_span_processor.py)
+#### E. Pruebas Unitarias Asociadas (Mapeo 1 a 1)
+Toda la lógica de ofuscación está cubierta y validada por pruebas unitarias automatizadas alineadas a los 3 componentes:
+- Motor Centralizado Cloud DLP, Regex y Plugin de Callbacks: [`tests/unit/test_pii_redactor.py`](tests/unit/test_pii_redactor.py)
+- Trazas OpenTelemetry con Sanitización Dirigida: [`tests/unit/test_span_processor.py`](tests/unit/test_span_processor.py)
 - Formateador BigQuery: [`tests/unit/test_bigquery_plugin.py`](tests/unit/test_bigquery_plugin.py)
-- Configuración de modos: [`tests/unit/test_pii_mode_config.py`](tests/unit/test_pii_mode_config.py)
-- Plugin en vuelo: [`tests/unit/test_pii_redaction_plugin.py`](tests/unit/test_pii_redaction_plugin.py)
+
 
 
 

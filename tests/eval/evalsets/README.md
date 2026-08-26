@@ -65,10 +65,11 @@ ADK eval measures:
 
 ## Creating Custom Evalsets
 
-1. Copy `basic.evalset.json` as a template
+1. Copy `biography.evalset.json` as a template
 2. Add cases based on your `DESIGN_SPEC.md` scenarios
 3. Include expected tool calls for capability tests
 4. Run `agents-cli eval run --evalset your_evalset.json`
+
 
 ## Tips
 
