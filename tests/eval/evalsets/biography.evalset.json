@@ -1,0 +1,52 @@
+{
+  "eval_set_id": "biography_eval",
+  "name": "Biography Agent Evaluation Set",
+  "description": "Evaluation set for testing biography generation using Google Search grounding.",
+  "eval_cases": [
+    {
+      "eval_id": "ada_lovelace_biography",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{"text": "Genera la biografía de Ada Lovelace."}]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "app",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "sundar_pichai_biography",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{"text": "Genera la biografía de Sundar Pichai."}]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "app",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "marie_curie_biography",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [{"text": "Genera una biografía estructurada de Marie Curie."}]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "app",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    }
+  ]
+}
