@@ -18,50 +18,40 @@ import google.auth
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
 
+from app.app_utils import services
+from app.app_utils.reasoning_engine_adapter import attach_reasoning_engine_routes
 from app.app_utils.telemetry import setup_pii_trace_redaction, setup_telemetry
-
 
 setup_telemetry()
 _, project_id = google.auth.default()
 allow_origins = (
-
     os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
 )
 
-# Artifact bucket for ADK (created by Terraform, passed via env var)
-logs_bucket_name = os.environ.get("LOGS_BUCKET_NAME")
-
 AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# Session Service configuration - Agent Engine / Agent Platform Sessions
-agent_engine_id = os.environ.get("AGENT_ENGINE_ID")
-session_service_uri = f"agentengine://{agent_engine_id}" if agent_engine_id else None
-
-
-artifact_service_uri = f"gs://{logs_bucket_name}" if logs_bucket_name else None
 
 app: FastAPI = get_fast_api_app(
     agents_dir=AGENT_DIR,
     web=True,
-    artifact_service_uri=artifact_service_uri,
+    artifact_service_uri=services.ARTIFACT_SERVICE_URI,
     allow_origins=allow_origins,
-    session_service_uri=session_service_uri,
+    session_service_uri=services.SESSION_SERVICE_URI,
     otel_to_cloud=True,
 )
 
-# Ensure PII redaction processor is prepended to the active TracerProvider created by get_fast_api_app
+# Inyecta procesador PII como primario en TracerProvider
 setup_pii_trace_redaction()
-
-
-
-
 
 app.title = "biography_agent"
 app.description = "API for interacting with the Agent biography_agent"
 
+# Rutas adaptadoras de Reasoning Engine para Gemini Enterprise y Console Playground
+attach_reasoning_engine_routes(app)
+
 
 # Main execution
-
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

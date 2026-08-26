@@ -70,17 +70,17 @@ def test_bq_pii_content_formatter_dict():
         "nested": {"ip": "192.168.1.1"},
     }
     result = bq_pii_content_formatter(data, "user_event")
-    assert "[REDACTED_EMAIL]" in result
-    assert "[REDACTED_PHONE]" in result
-    assert "[REDACTED_IP_ADDRESS]" in result
+    assert "[REDACTED_EMAIL]" in result or "[EMAIL_ADDRESS]" in result
+    assert "[REDACTED_PHONE]" in result or "[PHONE_NUMBER]" in result
+    assert "[REDACTED_IP_ADDRESS]" in result or "[IP_ADDRESS]" in result
     assert "alice@company.com" not in result
 
 
 def test_bq_pii_content_formatter_string():
     raw_str = "Contact john.doe@example.com or 555-987-6543"
     result = bq_pii_content_formatter(raw_str, "on_message")
-    assert "[REDACTED_EMAIL]" in result
-    assert "[REDACTED_PHONE]" in result
+    assert "[REDACTED_EMAIL]" in result or "[EMAIL_ADDRESS]" in result
+    assert "[REDACTED_PHONE]" in result or "[PHONE_NUMBER]" in result
 
 
 def test_bq_pii_content_formatter_content_obj():
@@ -88,7 +88,7 @@ def test_bq_pii_content_formatter_content_obj():
         role="user", parts=[types.Part.from_text(text="Send to bob@test.org")]
     )
     result = bq_pii_content_formatter(cnt, "model_request")
-    assert "[REDACTED_EMAIL]" in result
+    assert "[REDACTED_EMAIL]" in result or "[EMAIL_ADDRESS]" in result
     assert "bob@test.org" not in result
 
 

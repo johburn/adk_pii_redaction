@@ -30,8 +30,8 @@ from requests.exceptions import RequestException
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BASE_URL = "http://127.0.0.1:8000/"
-STREAM_URL = BASE_URL + "run_sse"
+BASE_URL = "http://127.0.0.1:8888"
+STREAM_URL = f"{BASE_URL}/run_sse"
 
 HEADERS = {"Content-Type": "application/json"}
 
@@ -53,7 +53,7 @@ def start_server() -> subprocess.Popen[str]:
         "--host",
         "0.0.0.0",
         "--port",
-        "8000",
+        "8888",
     ]
     env = os.environ.copy()
     env["INTEGRATION_TEST"] = "TRUE"
@@ -82,7 +82,7 @@ def wait_for_server(timeout: int = 90, interval: int = 1) -> bool:
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
-            response = requests.get("http://127.0.0.1:8000/docs", timeout=10)
+            response = requests.get("http://127.0.0.1:8888/docs", timeout=10)
             if response.status_code == 200:
                 logger.info("Server is ready")
                 return True

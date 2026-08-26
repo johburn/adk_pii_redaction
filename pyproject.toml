@@ -14,6 +14,11 @@ dependencies = [
     "google-cloud-dlp>=3.18.0,<4.0.0",
     "fastapi>=0.115.8,<1.0.0",
     "uvicorn~=0.34.0",
+    "aiohttp>=3.13.4",
+    "gcsfs>=2024.11.0",
+    "google-cloud-aiplatform[agent-engines,evaluation]>=1.156.0",
+    "opentelemetry-resourcedetector-gcp<=1.12.0a0",
+    "protobuf>=6.31.1,<7.0.0",
 ]
 requires-python = ">=3.11,<3.14"
 
@@ -111,7 +116,7 @@ acli_version = "0.1.1"
 
 [tool.agents-cli.create_params]
 # Parameters used during project creation
-deployment_target = "cloud_run"
+deployment_target = "agent_runtime"
 session_type = "in_memory"
 cicd_runner = "skip"
 include_data_ingestion = false

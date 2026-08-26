@@ -52,7 +52,8 @@ bio-agent/
 │   │   ├── pii_redactor.py     # Motor central de redacción (Cloud DLP / SDP & Regex)
 │   │   └── bigquery_analytics_plugin.py # Formateador con sanitización para BigQuery
 │   └── app_utils/              # Utilidades de infraestructura y observabilidad
-│       ├── ensure_session_engine.py # Aprovisionamiento automático de Vertex AI Session Service
+│       ├── reasoning_engine_adapter.py # Rutas HTTP del contrato Reasoning Engine para Gemini Enterprise
+│       ├── services.py         # Sesiones y artefactos compartidos en todo el proceso
 │       ├── span_processor.py   # Procesador OpenTelemetry con sanitización dirigida
 │       ├── telemetry.py        # Configuración de OpenTelemetry y Cloud Trace
 │       └── types_def.py        # Esquemas y tipos Pydantic
@@ -74,6 +75,7 @@ bio-agent/
 - **Framework**: ADK 2.0 (`google-adk`).
 - **Modelo**: `gemini-flash-latest` (vía Vertex AI).
 - **Herramientas**: `google_search` para fundamentación factual (grounding).
+- **Entrada Multimodal**: Admite documentos adjuntos (PDFs, CVs, texto) como input inicial para extraer la identidad del sujeto y realizar búsquedas factuales en Google Search.
 - **Plugins**: [`BigQueryAgentAnalyticsPlugin`](app/plugins/bigquery_analytics_plugin.py) para captura de analítica conversacional sanitizada.
 
 ### 2. Servidor Backend ([`app/fast_api_app.py`](app/fast_api_app.py))
@@ -83,9 +85,9 @@ bio-agent/
   - `POST /apps/app/users/{user_id}/sessions`: Creación de sesiones.
   - `GET /health` & `/version`: Verificación del servicio.
 
-### 3. Servicio de Sesiones Persistentes ([`app/app_utils/ensure_session_engine.py`](app/app_utils/ensure_session_engine.py))
-- **Módulo**: `VertexAiSessionService` de ADK.
-- **Detección Automática**: El script busca una instancia de Reasoning Engine con `display_name='biography_agent'`. Si no existe, la crea y reutiliza la URI (`agentengine://...`) en despliegues subsecuentes.
+### 3. Adaptador de Reasoning Engine y Servicios ([`app/app_utils/reasoning_engine_adapter.py`](app/app_utils/reasoning_engine_adapter.py) & [`app/app_utils/services.py`](app/app_utils/services.py))
+- **Gemini Enterprise & Vertex AI**: Expone `/api/stream_reasoning_engine` y `/api/reasoning_engine` permitiendo la integración nativa con Gemini Enterprise mediante el contrato de Reasoning Engine (`:streamQuery`).
+- **Estado Unificado (`services.py`)**: Centraliza `shared://session` y `shared://artifact` compartiendo el mismo contexto entre Gemini Enterprise y las llamadas directas de ADK.
 
 ---
 

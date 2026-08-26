@@ -47,10 +47,15 @@ server: ## Inicia el servidor FastAPI local con auto-reload en http://localhost:
 eval: ## Ejecuta el set de pruebas de evaluación con juez LLM (evalset)
 	uv run python -m google.adk.cli eval app $(EVALSET) --config_file_path $(EVAL_CONFIG)
 
-deploy: ## Garantiza la existencia del Reasoning Engine de sesiones y despliega en Cloud Run
-	@RESOURCE_NAME=$$(uv run python app/app_utils/ensure_session_engine.py 2>/dev/null | tr -d '\n\r'); \
-	echo "✓ Session Engine listo: $$RESOURCE_NAME"; \
-	agents-cli deploy --project $(PROJECT_ID) --region $(REGION) --update-env-vars AGENT_ENGINE_ID=$$RESOURCE_NAME --no-confirm-project
+deploy: ## Despliega el agente en Agent Engine (Agent Runtime)
+	agents-cli deploy --deployment-target agent_runtime --project $(PROJECT_ID) --region $(REGION) --no-confirm-project
+
+publish-gemini-enterprise: ## Registra el agente en Gemini Enterprise
+	agents-cli publish gemini-enterprise \
+		--registration-type adk \
+		--gemini-enterprise-app-id projects/938422762731/locations/global/collections/default_collection/engines/generic-application_1750093244833 \
+		--display-name "Biography Agent" \
+		--description "Agente especializado en investigacion y redaccion de biografias profesionales a partir de nombres o documentos adjuntos combinados con Google Search."
 
 
 lint: ## Ejecuta el linter (ruff) y verificación de código
